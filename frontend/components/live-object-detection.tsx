@@ -75,9 +75,22 @@ export function LiveObjectDetection() {
       if (!video) return
 
       // Option 1: Use ESP32-CAM stream (uncomment when ESP32 is available)
-      // video.src = 'http://localhost:8000/api/stream/mjpeg'
+      video.src = 'http://172.19.48.1:8000/api/stream/mjpeg'
+      
+      video.onloadedmetadata = () => {
+        video.play()
+        setIsStreaming(true)
+        
+        // Set canvas dimensions to match video
+        const canvas = canvasRef.current
+        if (canvas) {
+          canvas.width = video.videoWidth
+          canvas.height = video.videoHeight
+        }
+      }
       
       // Option 2: Use device camera (for testing without ESP32)
+      /* 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640 },
@@ -98,6 +111,7 @@ export function LiveObjectDetection() {
           canvas.height = video.videoHeight
         }
       }
+      */
     } catch (error) {
       console.error('Error starting stream:', error)
       alert('Failed to access camera. Please check permissions.')
