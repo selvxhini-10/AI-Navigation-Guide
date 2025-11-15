@@ -75,7 +75,7 @@ export function LiveObjectDetection() {
       if (!video) return
 
       // Option 1: Use ESP32-CAM stream (uncomment when ESP32 is available)
-      video.src = 'http://10.36.47.49:8000/api/stream/mjpeg'
+      video.src = 'http://192.168.4.2:8000/api/stream/mjpeg'
       
       video.onloadedmetadata = () => {
         video.play()
