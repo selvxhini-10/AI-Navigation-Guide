@@ -7,18 +7,20 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "esp_camera.h"
+#include "esp_wpa2.h"  // For eduroam WPA2 Enterprise
 
 // ===== CONFIGURE YOUR WIFI HERE =====
-const char* ssid = "eduroam";              // Your university WiFi SSID
-const char* password = "your_password";     // Your WiFi password
+// For eduroam (WPA2 Enterprise)
+const char* ssid = "eduroam";
+const char* EAP_IDENTITY = "youruserid@uwaterloo.ca";  // Your UWaterloo email
+const char* EAP_USERNAME = "youruserid@uwaterloo.ca";  // Same as identity
+const char* EAP_PASSWORD = "your_password";            // Your UWaterloo password
 // ====================================
 
-// For eduroam or enterprise WiFi, use this instead:
-// Uncomment and configure if using enterprise WiFi
+// For regular WiFi (comment out the above and use this instead)
 /*
-#include "esp_wpa2.h"
-#define EAP_IDENTITY "your_username@university.edu"  // Your username
-#define EAP_PASSWORD "your_password"                  // Your password
+const char* ssid = "YourWiFiName";
+const char* password = "YourPassword";
 */
 
 WebServer server(80);
@@ -158,27 +160,33 @@ void setup() {
   }
 
   // Connect to WiFi
-  Serial.println("\nConnecting to WiFi...");
+  Serial.println("\nConnecting to eduroam WiFi...");
   Serial.print("SSID: ");
   Serial.println(ssid);
+  Serial.print("Identity: ");
+  Serial.println(EAP_IDENTITY);
   
+  // Configure WPA2 Enterprise for eduroam
+  WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  
+  esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EAP_IDENTITY, strlen(EAP_IDENTITY));
+  esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EAP_USERNAME, strlen(EAP_USERNAME));
+  esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD));
+  esp_wifi_sta_wpa2_ent_enable();
+  
+  WiFi.begin(ssid);
   
   /* 
-   * For eduroam or enterprise WiFi, uncomment this section:
+   * For regular WiFi (WPA2-PSK), use this instead:
    * 
    * WiFi.mode(WIFI_STA);
-   * esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EAP_IDENTITY, strlen(EAP_IDENTITY));
-   * esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EAP_IDENTITY, strlen(EAP_IDENTITY));
-   * esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD));
-   * esp_wifi_sta_wpa2_ent_enable();
-   * WiFi.begin(ssid);
+   * WiFi.begin(ssid, password);
    */
 
   // Wait for connection with timeout
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {  // Increased timeout for eduroam
     delay(500);
     Serial.print(".");
     attempts++;
