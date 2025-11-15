@@ -9,8 +9,8 @@
 #include "esp_camera.h"
 
 // ===== CONFIGURE YOUR WIFI HERE =====
-const char* ssid = "MyPhoneHotspot";      // Your phone's hotspot name
-const char* password = "hotspot123";      // Your hotspot password
+const char* ssid = "iPhone";      // Your phone's hotspot name
+const char* password = "helloniyati";      // Your hotspot password
 // ====================================
 
 WebServer server(80);
@@ -36,12 +36,12 @@ WebServer server(80);
 // MJPEG Stream handler
 void handle_stream() {
   WiFiClient client = server.client();
+  
+  Serial.println("Stream client connected");
 
-  String boundary = "frameboundary";
   client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: multipart/x-mixed-replace; boundary=" + boundary);
+  client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
   client.println("Access-Control-Allow-Origin: *");
-  client.println("Connection: close");
   client.println();
 
   while(client.connected()) {
@@ -52,19 +52,29 @@ void handle_stream() {
       continue;
     }
 
-    client.println("--" + boundary);
-    client.println("Content-Type: image/jpeg");
-    client.print("Content-Length: ");
-    client.println(fb->len);
-    client.println();
-    client.write(fb->buf, fb->len);
-    client.println();
+    if(fb->format != PIXFORMAT_JPEG) {
+      Serial.println("Non-JPEG frame");
+      esp_camera_fb_return(fb);
+      continue;
+    }
 
+    client.println("--frame");
+    client.println("Content-Type: image/jpeg");
+    client.printf("Content-Length: %u\r\n\r\n", fb->len);
+    
+    if(client.write(fb->buf, fb->len) != fb->len) {
+      Serial.println("Send failed");
+      esp_camera_fb_return(fb);
+      break;
+    }
+    
+    client.println();
     esp_camera_fb_return(fb);
-    delay(50);  // ~20 FPS
+    
+    if(!client.connected()) break;
   }
   
-  Serial.println("Client disconnected");
+  Serial.println("Stream client disconnected");
 }
 
 // Root handler
