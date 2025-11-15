@@ -15,20 +15,9 @@ const char* password = "helloniyati";      // Your hotspot password
 
 WebServer server(80);
 
-// Button configuration
-#define BUTTON_PIN 13  // GPIO13 for button (you can change this)
-volatile bool captureRequested = false;
+// Last captured image storage
 camera_fb_t* lastCapture = NULL;
-unsigned long lastButtonPress = 0;
-
-void IRAM_ATTR buttonISR() {
-  unsigned long now = millis();
-  // Debounce: ignore if pressed within 500ms
-  if (now - lastButtonPress > 500) {
-    captureRequested = true;
-    lastButtonPress = now;
-  }
-}
+unsigned long lastCaptureTime = 0;
 
 // Camera pins for AI-Thinker ESP32-CAM
 #define PWDN_GPIO_NUM     32
@@ -114,7 +103,7 @@ void handle_capture() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Content-Type", "image/jpeg");
     server.sendHeader("Content-Length", String(lastCapture->len));
-    server.sendHeader("X-Capture-Time", String(lastButtonPress));
+    server.sendHeader("X-Capture-Time", String(lastCaptureTime));
     server.send(200);
     WiFiClient client = server.client();
     client.write(lastCapture->buf, lastCapture->len);
@@ -141,6 +130,29 @@ void handle_capture() {
   client.write(fb->buf, fb->len);
   esp_camera_fb_return(fb);
   Serial.println("Captured and served new image");
+}
+
+// Trigger capture via software button
+void handle_trigger() {
+  // Free previous capture if exists
+  if (lastCapture != NULL) {
+    esp_camera_fb_return(lastCapture);
+  }
+  
+  // Capture new image
+  lastCapture = esp_camera_fb_get();
+  lastCaptureTime = millis();
+  
+  if (lastCapture) {
+    Serial.println("📸 Software button pressed - Image captured!");
+    Serial.printf("Image size: %u bytes\n", lastCapture->len);
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", "{\"status\":\"captured\",\"size\":" + String(lastCapture->len) + ",\"time\":" + String(lastCaptureTime) + "}");
+  } else {
+    Serial.println("❌ Capture failed!");
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"capture failed\"}");
+  }
 }
 
 // Debug info endpoint
