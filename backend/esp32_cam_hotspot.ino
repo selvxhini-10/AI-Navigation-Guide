@@ -39,10 +39,15 @@ void handle_stream() {
   
   Serial.println("Stream client connected");
 
+  // Send HTTP headers
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
   client.println("Access-Control-Allow-Origin: *");
   client.println();
+  client.flush();
+
+  unsigned long lastFrame = millis();
+  int frameCount = 0;
 
   while(client.connected()) {
     camera_fb_t *fb = esp_camera_fb_get();
@@ -58,23 +63,70 @@ void handle_stream() {
       continue;
     }
 
+    // Send frame
     client.println("--frame");
     client.println("Content-Type: image/jpeg");
     client.printf("Content-Length: %u\r\n\r\n", fb->len);
     
-    if(client.write(fb->buf, fb->len) != fb->len) {
-      Serial.println("Send failed");
-      esp_camera_fb_return(fb);
+    size_t written = client.write(fb->buf, fb->len);
+    client.println();
+    client.flush();
+    
+    esp_camera_fb_return(fb);
+    
+    frameCount++;
+    if(millis() - lastFrame > 5000) {
+      Serial.printf("Streaming: %d frames in 5s\n", frameCount);
+      frameCount = 0;
+      lastFrame = millis();
+    }
+    
+    if(written != fb->len || !client.connected()) {
+      Serial.println("Client disconnected or send failed");
       break;
     }
     
-    client.println();
-    esp_camera_fb_return(fb);
-    
-    if(!client.connected()) break;
+    delay(33);  // ~30 FPS
   }
   
-  Serial.println("Stream client disconnected");
+  Serial.println("Stream ended");
+}
+
+// Single frame (JPEG) for debugging
+void handle_capture() {
+  camera_fb_t *fb = esp_camera_fb_get();
+  if(!fb) {
+    server.send(500, "text/plain", "Camera capture failed");
+    return;
+  }
+  if(fb->format != PIXFORMAT_JPEG) {
+    esp_camera_fb_return(fb);
+    server.send(500, "text/plain", "Non-JPEG frame");
+    return;
+  }
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Content-Type", "image/jpeg");
+  server.sendHeader("Content-Length", String(fb->len));
+  server.send(200);
+  WiFiClient client = server.client();
+  client.write(fb->buf, fb->len);
+  esp_camera_fb_return(fb);
+}
+
+// Debug info endpoint
+void handle_debug() {
+  String info;
+  info.reserve(256);
+  info += "{\n";
+  info += "  \"ip\": \"" + WiFi.localIP().toString() + "\",\n";
+  info += "  \"rssi\": " + String(WiFi.RSSI()) + ",\n";
+  info += "  \"heap_free\": " + String(ESP.getFreeHeap()) + ",\n";
+  info += "  \"psram_size\": " + String(ESP.getPsramSize()) + ",\n";
+  info += "  \"psram_free\": " + String(ESP.getFreePsram()) + ",\n";
+  info += "  \"stream_active\": false\n"; // simplistic flag; enhance if needed
+  info += "}";
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", info);
 }
 
 // Root handler
@@ -190,6 +242,8 @@ void setup() {
   server.on("/", handle_root);
   server.on("/stream", handle_stream);
   server.on("/status", handle_status);
+  server.on("/capture.jpg", handle_capture);
+  server.on("/debug", handle_debug);
   server.begin();
   
   Serial.println("✓ Server started on port 80");
