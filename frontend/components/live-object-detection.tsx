@@ -21,6 +21,7 @@ export function LiveObjectDetection() {
   const [detections, setDetections] = useState<Detection[]>([])
   const [model, setModel] = useState<any>(null)
   const [fps, setFps] = useState(0)
+  const [isCapturing, setIsCapturing] = useState(false)
   const animationFrameRef = useRef<number>()
   const lastFrameTimeRef = useRef<number>(0)
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null)

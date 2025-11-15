@@ -285,6 +285,7 @@ void setup() {
   server.on("/stream", handle_stream);
   server.on("/status", handle_status);
   server.on("/capture.jpg", handle_capture);
+  server.on("/trigger-capture", handle_trigger);  // Software capture trigger
   server.on("/debug", handle_debug);
   server.begin();
   
