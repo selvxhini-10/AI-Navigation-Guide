@@ -17,42 +17,47 @@ def load_image(image_path):
 
 def detect_objects_yolo(image):
     """
-    Detect objects using YOLOv5 (lightweight and accurate)
+    Detect objects using YOLOv8 (latest and fastest)
     Returns list of detections: [class, confidence, x, y, width, height]
     """
     try:
-        import torch
+        from ultralytics import YOLO
         
-        # Load YOLOv5 model (will download on first run)
-        model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
-        model.conf = 0.4  # Confidence threshold
-        model.iou = 0.45  # NMS IOU threshold
+        # Load YOLOv8 nano model (lightweight and fast)
+        print("Loading YOLOv8 model...")
+        model = YOLO('yolov8n.pt')  # Will download on first run
         
         # Run inference
-        results = model(image)
+        results = model(image, conf=0.4, verbose=False)
         
         # Extract detections
         detections = []
-        for pred in results.xyxy[0]:  # xyxy format: [x1, y1, x2, y2, conf, class]
-            x1, y1, x2, y2, conf, cls = pred.tolist()
-            
-            # Convert to [x, y, width, height]
-            x, y = int(x1), int(y1)
-            w, h = int(x2 - x1), int(y2 - y1)
-            
-            class_name = model.names[int(cls)]
-            confidence = float(conf)
-            
-            detections.append({
-                'class': class_name,
-                'confidence': confidence,
-                'bbox': [x, y, w, h]
-            })
+        for result in results:
+            boxes = result.boxes
+            for box in boxes:
+                # Get box coordinates
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                
+                # Convert to [x, y, width, height]
+                x, y = int(x1), int(y1)
+                w, h = int(x2 - x1), int(y2 - y1)
+                
+                # Get class and confidence
+                cls = int(box.cls[0])
+                conf = float(box.conf[0])
+                class_name = model.names[cls]
+                
+                detections.append({
+                    'class': class_name,
+                    'confidence': conf,
+                    'bbox': [x, y, w, h]
+                })
         
+        print(f"YOLOv8 detection complete")
         return detections
     
     except Exception as e:
-        print(f"Error with YOLOv5: {e}")
+        print(f"Error with YOLOv8: {e}")
         print("Falling back to placeholder detection...")
         return []
 

@@ -19,6 +19,15 @@ WebServer server(80);
 camera_fb_t* lastCapture = NULL;
 unsigned long lastCaptureTime = 0;
 
+// Button configuration
+#define BUTTON_PIN 13  // GPIO13 for button
+volatile bool captureRequested = false;
+
+// Button interrupt handler
+void IRAM_ATTR buttonISR() {
+  captureRequested = true;
+}
+
 // Camera pins for AI-Thinker ESP32-CAM
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1

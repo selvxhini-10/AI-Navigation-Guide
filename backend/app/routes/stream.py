@@ -28,9 +28,11 @@ async def proxy_snapshot():
     try:
         # Request single frame from ESP32-CAM
         snapshot_url = ESP32_CAM_STREAM_URL.replace('/stream', '/capture.jpg')
-        response = requests.get(snapshot_url, timeout=5)
+        logger.info(f"Fetching snapshot from {snapshot_url}")
+        response = requests.get(snapshot_url, timeout=10)  # Increased timeout
         
         if response.status_code == 200:
+            logger.info("Snapshot fetched successfully")
             return Response(
                 content=response.content,
                 media_type="image/jpeg",
@@ -44,8 +46,11 @@ async def proxy_snapshot():
             return Response(status_code=503, content="Camera unavailable")
             
     except requests.exceptions.Timeout:
-        logger.error("Timeout fetching snapshot from ESP32-CAM")
+        logger.error(f"Timeout fetching snapshot from ESP32-CAM at {snapshot_url}")
         return Response(status_code=504, content="Camera timeout")
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"Connection error to ESP32-CAM: {e}")
+        return Response(status_code=503, content="Cannot connect to camera")
     except Exception as e:
         logger.error(f"Snapshot error: {e}")
         return Response(status_code=500, content=f"Error: {str(e)}")

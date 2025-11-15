@@ -1,0 +1,47 @@
+{
+  "detections": [
+    {
+      "class": "traffic light",
+      "confidence": 0.8480736017227173,
+      "bbox": [
+        175,
+        26,
+        15,
+        39
+      ]
+    },
+    {
+      "class": "traffic light",
+      "confidence": 0.8474395871162415,
+      "bbox": [
+        54,
+        26,
+        16,
+        42
+      ]
+    },
+    {
+      "class": "traffic light",
+      "confidence": 0.7082210779190063,
+      "bbox": [
+        133,
+        90,
+        9,
+        21
+      ]
+    },
+    {
+      "class": "traffic light",
+      "confidence": 0.421756774187088,
+      "bbox": [
+        76,
+        89,
+        9,
+        23
+      ]
+    }
+  ],
+  "description": "I detected 4 objects. 4 traffic lights",
+  "audio_file": "C:\\Users\\selva\\Documents\\GitHub\\Unreal-Mobile-AR\\backend\\detection_audio.mp3",
+  "total_objects": 4
+}
