@@ -2,6 +2,12 @@
 
 FastAPI-based backend for AI-powered walking stick with object detection and live GPS guidance.
 
+## 📚 Quick Links
+
+- **[ESP32-CAM Setup Guide](./ESP32_CAM_SETUP.md)** - Complete guide for WiFi AP mode integration
+- **[Quick Start Guide](../ESP32_QUICK_START.md)** - Get started in 3 steps
+- **[API Documentation](http://localhost:8000/docs)** - Interactive Swagger docs (when running)
+
 ## Project Overview
 
 The Smart Navigation Cane system consists of:
@@ -72,7 +78,8 @@ The API will be available at `http://localhost:8000`
 - `GET /ready` - Readiness status
 
 ### Object Detection (Camera Input)
-- `POST /api/detection/camera/upload` - Upload frame from ESP32-CAM
+- `POST /api/detection/camera/upload` - Upload frame from ESP32-CAM (JSON + base64)
+- `POST /api/detection/camera/upload-image` - Upload image (multipart/form-data) **← ESP32-CAM uses this**
 - `POST /api/detection/process` - Store object detection results
 - `GET /api/detection/latest` - Get latest detection results
 - `GET /api/detection/{frame_id}` - Get detection for specific frame
@@ -172,11 +179,33 @@ The API will be available at `http://localhost:8000`
 
 ## Hardware Integration
 
-### ESP32-CAM Setup
-1. Flash with appropriate firmware for video streaming
-2. Configure WiFi connection to same network as backend
-3. Set API endpoint URL in device configuration
-4. Device will periodically upload frames via `/api/detection/camera/upload`
+### ESP32-CAM Setup (WiFi AP Mode)
+
+The backend supports direct connection to ESP32-CAM operating as a WiFi Access Point:
+
+**Quick Setup:**
+1. **Flash ESP32-CAM** with provided Arduino sketch (`esp32_examples/esp32_cam_image_sender.ino`)
+2. **Connect to WiFi AP**: SSID `ESP32_CAM_AP`, Password `12345678`
+3. **Start Backend**: Your computer becomes `192.168.4.2`, backend listens on port 8000
+4. **ESP32 sends images** to `http://192.168.4.2:8000/api/detection/camera/upload-image`
+
+**Network Architecture:**
+```
+ESP32-CAM (192.168.4.1) ←→ Computer (192.168.4.2:8000) ←→ Frontend (localhost:3000)
+```
+
+**Configuration (.env):**
+```env
+ESP32_AP_SSID=ESP32_CAM_AP
+ESP32_AP_PASSWORD=12345678
+ESP32_AP_IP=192.168.4.1
+ESP32_CAM_STREAM_URL=http://192.168.4.1/capture
+ESP32_CAM_ENABLED=True
+API_HOST=0.0.0.0
+API_PORT=8000
+```
+
+**📖 See [ESP32_CAM_SETUP.md](./ESP32_CAM_SETUP.md) for complete documentation**
 
 ### Arduino Setup
 1. Configure with ESP32-CAM communication interface

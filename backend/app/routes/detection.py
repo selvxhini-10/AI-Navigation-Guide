@@ -2,15 +2,18 @@
 Camera and object detection endpoints
 Handles frames from ESP32-CAM and processes object detection
 """
-from fastapi import APIRouter, status, HTTPException, UploadFile, File
+from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from app.models import (
     ObjectDetectionFrame, DetectedObject, CameraFrameUpload
 )
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 import io
 import base64
 from pathlib import Path
+import cv2
+import numpy as np
 
 router = APIRouter()
 
@@ -21,7 +24,7 @@ frame_id_counter = 1
 @router.post("/camera/upload", status_code=status.HTTP_201_CREATED)
 async def upload_camera_frame(frame_data: CameraFrameUpload):
     """
-    Upload camera frame from ESP32-CAM with embedded metadata
+    Upload camera frame from ESP32-CAM with embedded metadata (JSON + base64)
     
     Args:
         frame_data: Camera frame upload payload
@@ -64,6 +67,80 @@ async def upload_camera_frame(frame_data: CameraFrameUpload):
         "frame_id": frame_id,
         "message": "Frame queued for object detection processing"
     }
+
+@router.post("/camera/upload-image", status_code=status.HTTP_201_CREATED)
+async def upload_camera_image(
+    image: UploadFile = File(...),
+    device_id: str = Form("esp32_cam_default"),
+    metadata: Optional[str] = Form(None)
+):
+    """
+    Upload camera image from ESP32-CAM via multipart/form-data
+    Optimized for direct ESP32-CAM HTTP POST uploads
+    
+    Args:
+        image: Image file from ESP32-CAM
+        device_id: Device identifier
+        metadata: Optional JSON string with additional metadata
+    
+    Returns:
+        Confirmation with frame processing status and image info
+    """
+    global frame_id_counter
+    
+    frame_id = f"frame_{frame_id_counter}"
+    frame_id_counter += 1
+    timestamp = datetime.utcnow().isoformat()
+    
+    # Create directory for frames
+    frames_dir = Path("saved_frames")
+    frames_dir.mkdir(exist_ok=True)
+    
+    try:
+        # Read image bytes
+        image_bytes = await image.read()
+        
+        # Save image
+        frame_path = frames_dir / f"{frame_id}.jpg"
+        with open(frame_path, "wb") as f:
+            f.write(image_bytes)
+        
+        # Decode image with OpenCV for analysis
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            raise HTTPException(status_code=400, detail="Invalid image format")
+        
+        height, width, channels = img.shape
+        
+        # Store frame record
+        frame_record = {
+            "frame_id": frame_id,
+            "device_id": device_id,
+            "timestamp": timestamp,
+            "frame_path": str(frame_path),
+            "image_info": {
+                "width": int(width),
+                "height": int(height),
+                "channels": int(channels),
+                "size_bytes": len(image_bytes)
+            },
+            "metadata": metadata,
+            "status": "received"
+        }
+        detected_frames_store.append(frame_record)
+        
+        return {
+            "status": "success",
+            "frame_id": frame_id,
+            "timestamp": timestamp,
+            "message": "Image received and saved",
+            "image_info": frame_record["image_info"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 @router.get("/detection/latest")
 async def get_latest_detection():

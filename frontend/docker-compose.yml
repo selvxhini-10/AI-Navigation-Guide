@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vision-guide-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_APP_NAME=VisionGuide
+      - NEXT_PUBLIC_APP_VERSION=1.0.0
+    restart: unless-stopped
+    networks:
+      - snc-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  backend:
+    image: python:3.11-slim
+    container_name: snc-backend
+    working_dir: /app
+    volumes:
+      - ../backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DEBUG=false
+    command: >
+      bash -c "pip install --no-cache-dir -r requirements.txt &&
+               uvicorn main:app --host 0.0.0.0 --port 8000"
+    networks:
+      - snc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+networks:
+  snc-network:
+    driver: bridge

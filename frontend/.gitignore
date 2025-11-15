@@ -1,0 +1,75 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+/.yarn/install-state.gz
+
+# Testing
+coverage/
+.nyc_output/
+
+# Next.js
+/.next/
+/out/
+*.tsbuildinfo
+
+# Production
+/build/
+/dist/
+
+# Misc
+.DS_Store
+.env
+.env.local
+.env.*.local
+.env.production.local
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.sln.docstates
+*.user
+*.userosscache
+*.sln
+*.csproj
+*.clj
+.vscode/settings.json
+.vscode/launch.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Logs
+logs/
+*.log
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Turbopack
+.turbo/
+
+# Vercel
+.vercel
+
+# Environment files (keep .env.example)
+!.env.example
