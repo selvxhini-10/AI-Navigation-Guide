@@ -9,13 +9,15 @@ import cv2
 import numpy as np
 from typing import AsyncGenerator
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# ESP32-CAM stream URL (configurable)
-ESP32_CAM_STREAM_URL = "http://192.168.4.1:80/stream"
+# ESP32-CAM stream URL (configurable via environment variable)
+# Set this after uploading Arduino code and getting the ESP32's IP
+ESP32_CAM_STREAM_URL = os.getenv("ESP32_CAM_URL", "http://192.168.4.1:80/stream")
 
 @router.get("/stream/mjpeg")
 async def proxy_mjpeg_stream():

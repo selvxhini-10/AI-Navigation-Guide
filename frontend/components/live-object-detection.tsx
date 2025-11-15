@@ -74,19 +74,37 @@ export function LiveObjectDetection() {
       const video = videoRef.current
       if (!video) return
 
-      // Option 1: Use ESP32-CAM stream (uncomment when ESP32 is available)
-      video.src = 'http://192.168.4.2:8000/api/stream/mjpeg'
+      // Option 1: Use ESP32-CAM stream via backend proxy
+      // Both people can use localhost since backend proxies the ESP32 stream
+      video.src = 'http://localhost:8000/api/stream/mjpeg'
       
-      video.onloadedmetadata = () => {
+      video.onloadstart = () => {
+        console.log('Stream loading started')
+      }
+      
+      video.onloadeddata = () => {
+        console.log('Stream data loaded')
         video.play()
         setIsStreaming(true)
         
-        // Set canvas dimensions to match video
         const canvas = canvasRef.current
         if (canvas) {
-          canvas.width = video.videoWidth
-          canvas.height = video.videoHeight
+          canvas.width = video.videoWidth || 640
+          canvas.height = video.videoHeight || 480
         }
+      }
+      
+      video.onerror = (e) => {
+        console.error('Video error:', e)
+        alert('Failed to load stream. Make sure:\n1. ESP32-CAM is connected to university WiFi\n2. Backend is running: python main.py\n3. Backend .env has correct ESP32_CAM_URL')
+      }
+      
+      // Try to play immediately for MJPEG streams
+      try {
+        await video.play()
+        setIsStreaming(true)
+      } catch (err) {
+        console.log('Waiting for stream data...')
       }
       
       // Option 2: Use device camera (for testing without ESP32)
@@ -104,7 +122,6 @@ export function LiveObjectDetection() {
         video.play()
         setIsStreaming(true)
         
-        // Set canvas dimensions to match video
         const canvas = canvasRef.current
         if (canvas) {
           canvas.width = video.videoWidth
