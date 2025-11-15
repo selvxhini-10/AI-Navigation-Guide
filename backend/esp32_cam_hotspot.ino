@@ -15,6 +15,21 @@ const char* password = "helloniyati";      // Your hotspot password
 
 WebServer server(80);
 
+// Button configuration
+#define BUTTON_PIN 13  // GPIO13 for button (you can change this)
+volatile bool captureRequested = false;
+camera_fb_t* lastCapture = NULL;
+unsigned long lastButtonPress = 0;
+
+void IRAM_ATTR buttonISR() {
+  unsigned long now = millis();
+  // Debounce: ignore if pressed within 500ms
+  if (now - lastButtonPress > 500) {
+    captureRequested = true;
+    lastButtonPress = now;
+  }
+}
+
 // Camera pins for AI-Thinker ESP32-CAM
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
@@ -92,8 +107,22 @@ void handle_stream() {
   Serial.println("Stream ended");
 }
 
-// Single frame (JPEG) for debugging
+// Single frame (JPEG) - returns last captured image or captures new one
 void handle_capture() {
+  // If there's a stored capture, return it
+  if (lastCapture != NULL) {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Content-Type", "image/jpeg");
+    server.sendHeader("Content-Length", String(lastCapture->len));
+    server.sendHeader("X-Capture-Time", String(lastButtonPress));
+    server.send(200);
+    WiFiClient client = server.client();
+    client.write(lastCapture->buf, lastCapture->len);
+    Serial.println("Served captured image");
+    return;
+  }
+  
+  // Otherwise capture a new frame
   camera_fb_t *fb = esp_camera_fb_get();
   if(!fb) {
     server.send(500, "text/plain", "Camera capture failed");
@@ -111,6 +140,7 @@ void handle_capture() {
   WiFiClient client = server.client();
   client.write(fb->buf, fb->len);
   esp_camera_fb_return(fb);
+  Serial.println("Captured and served new image");
 }
 
 // Debug info endpoint
@@ -246,12 +276,36 @@ void setup() {
   server.on("/debug", handle_debug);
   server.begin();
   
+  // Setup button interrupt
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, FALLING);
+  
   Serial.println("✓ Server started on port 80");
-  Serial.println("Ready to stream!\n");
+  Serial.println("✓ Button configured on GPIO13");
+  Serial.println("Ready to capture! Press button to take photo.\n");
 }
 
 void loop() {
   server.handleClient();
+  
+  // Check if button was pressed
+  if (captureRequested) {
+    captureRequested = false;
+    
+    // Free previous capture if exists
+    if (lastCapture != NULL) {
+      esp_camera_fb_return(lastCapture);
+    }
+    
+    // Capture new image
+    lastCapture = esp_camera_fb_get();
+    if (lastCapture) {
+      Serial.println("📸 Button pressed - Image captured!");
+      Serial.printf("Image size: %u bytes\n", lastCapture->len);
+    } else {
+      Serial.println("❌ Capture failed!");
+    }
+  }
   
   // Auto-reconnect if disconnected
   if (WiFi.status() != WL_CONNECTED) {

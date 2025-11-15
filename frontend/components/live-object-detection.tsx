@@ -13,7 +13,7 @@ interface Detection {
 }
 
 export function LiveObjectDetection() {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [isDetecting, setIsDetecting] = useState(false)
@@ -26,6 +26,7 @@ export function LiveObjectDetection() {
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null)
   const lastSpokenRef = useRef<string>('')
   const lastSpeakTimeRef = useRef<number>(0)
+  const snapshotIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Load TensorFlow.js and COCO-SSD model
   useEffect(() => {
@@ -71,76 +72,66 @@ export function LiveObjectDetection() {
 
   const startStream = async () => {
     try {
-      const video = videoRef.current
-      if (!video) return
+      const img = imgRef.current
+      const canvas = canvasRef.current
+      if (!img || !canvas) return
 
-      // Option 1: Use ESP32-CAM stream via backend proxy
-      // Both people can use localhost since backend proxies the ESP32 stream
-      video.src = 'http://localhost:8000/api/stream/mjpeg'
+      // Set canvas size  
+      canvas.width = 640
+      canvas.height = 480
+
+      setIsStreaming(true)
       
-      video.onloadstart = () => {
-        console.log('Stream loading started')
-      }
+      let lastCaptureTime = 0
       
-      video.onloadeddata = () => {
-        console.log('Stream data loaded')
-        video.play()
-        setIsStreaming(true)
+      // Poll for new captures every 500ms (button-triggered, so no need for high frequency)
+      snapshotIntervalRef.current = setInterval(async () => {
+        try {
+          // Fetch with cache-busting and check for new capture
+          const response = await fetch(`http://localhost:8000/api/stream/snapshot?t=${Date.now()}`)
+          
+          if (response.ok) {
+            const captureTime = response.headers.get('X-Capture-Time')
+            const newTime = captureTime ? parseInt(captureTime) : Date.now()
+            
+            // Only update if it's a new capture
+            if (newTime > lastCaptureTime) {
+              lastCaptureTime = newTime
+              const blob = await response.blob()
+              img.src = URL.createObjectURL(blob)
+              console.log('New image received from button press')
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch snapshot:', err)
+        }
+      }, 500)
+      
+      // When image loads, it will trigger detection
+      img.onload = () => {
+        if (!isStreaming) return
         
-        const canvas = canvasRef.current
-        if (canvas) {
-          canvas.width = video.videoWidth || 640
-          canvas.height = video.videoHeight || 480
+        // Draw image to canvas for detection
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
         }
       }
       
-      video.onerror = (e) => {
-        console.error('Video error:', e)
-        alert('Failed to load stream. Make sure:\n1. ESP32-CAM is connected to university WiFi\n2. Backend is running: python main.py\n3. Backend .env has correct ESP32_CAM_URL')
+      img.onerror = () => {
+        console.error('Failed to load snapshot')
       }
       
-      // Try to play immediately for MJPEG streams
-      try {
-        await video.play()
-        setIsStreaming(true)
-      } catch (err) {
-        console.log('Waiting for stream data...')
-      }
-      
-      // Option 2: Use device camera (for testing without ESP32)
-      /* 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: 'environment' // Use back camera on mobile
-        }
-      })
-      video.srcObject = stream
-      
-      video.onloadedmetadata = () => {
-        video.play()
-        setIsStreaming(true)
-        
-        const canvas = canvasRef.current
-        if (canvas) {
-          canvas.width = video.videoWidth
-          canvas.height = video.videoHeight
-        }
-      }
-      */
     } catch (error) {
       console.error('Error starting stream:', error)
-      alert('Failed to access camera. Please check permissions.')
+      alert('Failed to access camera stream.')
     }
   }
 
   const stopStream = () => {
-    const video = videoRef.current
-    if (video?.srcObject) {
-      const stream = video.srcObject as MediaStream
-      stream.getTracks().forEach(track => track.stop())
-      video.srcObject = null
+    if (snapshotIntervalRef.current) {
+      clearInterval(snapshotIntervalRef.current)
+      snapshotIntervalRef.current = null
     }
     setIsStreaming(false)
     setIsDetecting(false)
@@ -200,9 +191,8 @@ export function LiveObjectDetection() {
   const detectFrame = async () => {
     if (!model || !isDetecting) return
 
-    const video = videoRef.current
     const canvas = canvasRef.current
-    if (!video || !canvas) return
+    if (!canvas) return
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
@@ -216,16 +206,9 @@ export function LiveObjectDetection() {
       }
       lastFrameTimeRef.current = now
 
-      // Draw video frame to canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-      // Run object detection
+      // Run object detection on canvas (already has image from img.onload)
       const predictions = await model.detect(canvas)
       setDetections(predictions)
-
-      // Clear previous drawings
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
       // Draw bounding boxes and labels
       predictions.forEach((prediction: Detection) => {
@@ -295,20 +278,18 @@ export function LiveObjectDetection() {
           </div>
 
           <Card className="p-6 bg-card border-border">
-            {/* Video Stream Display */}
+            {/* Snapshot Stream Display */}
             <div className="relative bg-black rounded-lg overflow-hidden mb-6" style={{ aspectRatio: '4/3' }}>
-              <video
-                ref={videoRef}
+              <img
+                ref={imgRef}
                 className="absolute inset-0 w-full h-full object-contain"
-                autoPlay
-                playsInline
-                muted
-                style={{ display: isStreaming ? 'block' : 'none' }}
+                style={{ display: 'none' }}
+                alt="ESP32-CAM Stream"
               />
               <canvas
                 ref={canvasRef}
                 className="absolute inset-0 w-full h-full object-contain"
-                style={{ display: isStreaming && isDetecting ? 'block' : 'none' }}
+                style={{ display: isStreaming ? 'block' : 'none' }}
               />
               
               {!isStreaming && (

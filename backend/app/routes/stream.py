@@ -19,6 +19,37 @@ router = APIRouter()
 # Set this after uploading Arduino code and getting the ESP32's IP
 ESP32_CAM_STREAM_URL = os.getenv("ESP32_CAM_URL", "http://192.168.4.1:80/stream")
 
+@router.get("/snapshot")
+async def proxy_snapshot():
+    """
+    Proxy single JPEG snapshot from ESP32-CAM to frontend
+    Much more reliable than continuous MJPEG stream
+    """
+    try:
+        # Request single frame from ESP32-CAM
+        snapshot_url = ESP32_CAM_STREAM_URL.replace('/stream', '/capture.jpg')
+        response = requests.get(snapshot_url, timeout=5)
+        
+        if response.status_code == 200:
+            return Response(
+                content=response.content,
+                media_type="image/jpeg",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "no-cache, no-store, must-revalidate"
+                }
+            )
+        else:
+            logger.error(f"ESP32-CAM returned status {response.status_code}")
+            return Response(status_code=503, content="Camera unavailable")
+            
+    except requests.exceptions.Timeout:
+        logger.error("Timeout fetching snapshot from ESP32-CAM")
+        return Response(status_code=504, content="Camera timeout")
+    except Exception as e:
+        logger.error(f"Snapshot error: {e}")
+        return Response(status_code=500, content=f"Error: {str(e)}")
+
 @router.get("/mjpeg")
 async def proxy_mjpeg_stream():
     """
