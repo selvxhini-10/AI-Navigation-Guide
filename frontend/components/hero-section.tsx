@@ -1,9 +1,53 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Play } from 'lucide-react'
+import { ArrowRight, Play, Volume2, VolumeX } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
 
 export function HeroSection() {
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+
+  const handleTextToSpeech = () => {
+    if (isSpeaking) {
+      // Stop speaking
+      window.speechSynthesis.cancel()
+      setIsSpeaking(false)
+      return
+    }
+
+    // Text content to read
+    const textToRead = `
+      Empowering Vision Through Intelligent Technology.
+      Revolutionary wearable device combining ESP32 camera modules with advanced AI object detection 
+      to provide real-time navigation assistance for the blind and visually impaired.
+      Features include: AI Object Detection, Real-Time Distance Alerts, GPS Navigation, and Audio Feedback.
+    `
+
+    const utterance = new SpeechSynthesisUtterance(textToRead)
+    utteranceRef.current = utterance
+
+    // Configure voice
+    utterance.rate = 0.9 // Slightly slower for clarity
+    utterance.pitch = 1.0
+    utterance.volume = 1.0
+
+    // Event handlers
+    utterance.onstart = () => setIsSpeaking(true)
+    utterance.onend = () => setIsSpeaking(false)
+    utterance.onerror = () => setIsSpeaking(false)
+
+    // Speak
+    window.speechSynthesis.speak(utterance)
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel()
+    }
+  }, [])
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Video/Image Background Placeholder */}
@@ -38,6 +82,24 @@ export function HeroSection() {
             <Button size="lg" variant="outline" className="px-8 group">
               <Play className="mr-2 w-4 h-4" />
               Watch Demo
+            </Button>
+            <Button 
+              size="lg" 
+              variant="secondary" 
+              className="px-8 group"
+              onClick={handleTextToSpeech}
+            >
+              {isSpeaking ? (
+                <>
+                  <VolumeX className="mr-2 w-4 h-4" />
+                  Stop Reading
+                </>
+              ) : (
+                <>
+                  <Volume2 className="mr-2 w-4 h-4" />
+                  Read Aloud
+                </>
+              )}
             </Button>
           </div>
 

@@ -4,264 +4,123 @@ import { useEffect, useRef, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Volume2, VolumeX, Camera, CameraOff } from 'lucide-react'
+import { Volume2, Camera, Loader2, Eye } from 'lucide-react'
 
 interface Detection {
   class: string
-  score: number
-  bbox: [number, number, number, number] // [x, y, width, height]
+  confidence: number
+  bbox: [number, number, number, number]
 }
+
+const API_BASE_URL = 'http://localhost:8000'
 
 export function LiveObjectDetection() {
   const imgRef = useRef<HTMLImageElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [isDetecting, setIsDetecting] = useState(false)
-  const [audioEnabled, setAudioEnabled] = useState(true)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [snapshot, setSnapshot] = useState<string | null>(null)
   const [detections, setDetections] = useState<Detection[]>([])
-  const [model, setModel] = useState<any>(null)
-  const [fps, setFps] = useState(0)
-  const [isCapturing, setIsCapturing] = useState(false)
-  const animationFrameRef = useRef<number>()
-  const lastFrameTimeRef = useRef<number>(0)
-  const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null)
-  const lastSpokenRef = useRef<string>('')
-  const lastSpeakTimeRef = useRef<number>(0)
-  const snapshotIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [description, setDescription] = useState<string>('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [useTestImage, setUseTestImage] = useState(true)
 
-  // Load TensorFlow.js and COCO-SSD model
+  // Load test image on mount
   useEffect(() => {
-    const loadModel = async () => {
-      try {
-        // Dynamically import TensorFlow.js libraries
-        const tf = await import('@tensorflow/tfjs')
-        const cocoSsd = await import('@tensorflow-models/coco-ssd')
-        
-        // Set backend to WebGL for better performance
-        await tf.setBackend('webgl')
-        await tf.ready()
-        
-        // Load COCO-SSD model
-        const loadedModel = await cocoSsd.load({
-          base: 'mobilenet_v2' // Faster, use 'lite_mobilenet_v2' for even faster
+    if (useTestImage) {
+      setSnapshot(`${API_BASE_URL}/api/ai/test-image?t=${Date.now()}`)
+    }
+  }, [useTestImage])
+
+  const captureAndProcess = async () => {
+    setIsProcessing(true)
+    setError(null)
+    
+    try {
+      let imageBlob: Blob
+      
+      if (useTestImage) {
+        // Use test image for development
+        console.log('📸 Using test image...')
+        const imageResponse = await fetch(`${API_BASE_URL}/api/ai/test-image`)
+        if (!imageResponse.ok) {
+          throw new Error('Failed to fetch test image')
+        }
+        imageBlob = await imageResponse.blob()
+      } else {
+        // Real ESP32 flow
+        console.log('📸 Triggering ESP32 capture...')
+        const triggerResponse = await fetch(`${API_BASE_URL}/api/stream/trigger-capture`, {
+          method: 'POST'
         })
         
-        setModel(loadedModel)
-        console.log('COCO-SSD model loaded successfully')
-      } catch (error) {
-        console.error('Error loading model:', error)
-      }
-    }
-
-    loadModel()
-
-    // Initialize speech synthesis
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      speechSynthesisRef.current = new SpeechSynthesisUtterance()
-      speechSynthesisRef.current.rate = 1.2
-      speechSynthesisRef.current.pitch = 1.0
-      speechSynthesisRef.current.volume = 1.0
-    }
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-      }
-      stopStream()
-    }
-  }, [])
-
-  const startStream = async () => {
-    try {
-      const img = imgRef.current
-      const canvas = canvasRef.current
-      if (!img || !canvas) return
-
-      // Set canvas size  
-      canvas.width = 640
-      canvas.height = 480
-
-      setIsStreaming(true)
-      
-      let lastCaptureTime = 0
-      
-      // Poll for new captures every 500ms (button-triggered, so no need for high frequency)
-      snapshotIntervalRef.current = setInterval(async () => {
-        try {
-          // Fetch with cache-busting and check for new capture
-          const response = await fetch(`http://localhost:8000/api/stream/snapshot?t=${Date.now()}`)
-          
-          if (response.ok) {
-            const captureTime = response.headers.get('X-Capture-Time')
-            const newTime = captureTime ? parseInt(captureTime) : Date.now()
-            
-            // Only update if it's a new capture
-            if (newTime > lastCaptureTime) {
-              lastCaptureTime = newTime
-              const blob = await response.blob()
-              img.src = URL.createObjectURL(blob)
-              console.log('New image received from button press')
-            }
-          }
-        } catch (err) {
-          console.error('Failed to fetch snapshot:', err)
+        if (!triggerResponse.ok) {
+          throw new Error('Failed to trigger ESP32 capture')
         }
-      }, 500)
-      
-      // When image loads, it will trigger detection
-      img.onload = () => {
-        if (!isStreaming) return
         
-        // Draw image to canvas for detection
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        // Wait for ESP32 to process
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        // Get captured image
+        console.log('🖼️  Fetching captured image...')
+        const imageResponse = await fetch(`${API_BASE_URL}/api/stream/snapshot?t=${Date.now()}`)
+        if (!imageResponse.ok) {
+          throw new Error('Failed to fetch snapshot')
         }
+        
+        imageBlob = await imageResponse.blob()
       }
       
-      img.onerror = () => {
-        console.error('Failed to load snapshot')
-      }
+      const imageUrl = URL.createObjectURL(imageBlob)
+      setSnapshot(imageUrl)
       
-    } catch (error) {
-      console.error('Error starting stream:', error)
-      alert('Failed to access camera stream.')
-    }
-  }
-
-  const stopStream = () => {
-    if (snapshotIntervalRef.current) {
-      clearInterval(snapshotIntervalRef.current)
-      snapshotIntervalRef.current = null
-    }
-    setIsStreaming(false)
-    setIsDetecting(false)
-    
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-    }
-  }
-
-  const speakAlert = (text: string) => {
-    if (!audioEnabled || !speechSynthesisRef.current) return
-    
-    const now = Date.now()
-    // Prevent speaking the same thing within 3 seconds
-    if (text === lastSpokenRef.current && now - lastSpeakTimeRef.current < 3000) {
-      return
-    }
-    
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel()
-    
-    speechSynthesisRef.current.text = text
-    window.speechSynthesis.speak(speechSynthesisRef.current)
-    
-    lastSpokenRef.current = text
-    lastSpeakTimeRef.current = now
-  }
-
-  const getDistanceEstimate = (bbox: [number, number, number, number]): string => {
-    const [x, y, width, height] = bbox
-    const area = width * height
-    const canvas = canvasRef.current
-    if (!canvas) return 'unknown distance'
-    
-    const totalArea = canvas.width * canvas.height
-    const proportion = area / totalArea
-    
-    if (proportion > 0.3) return 'very close'
-    if (proportion > 0.15) return 'close'
-    if (proportion > 0.05) return 'medium distance'
-    return 'far away'
-  }
-
-  const getPosition = (bbox: [number, number, number, number]): string => {
-    const [x, y, width, height] = bbox
-    const canvas = canvasRef.current
-    if (!canvas) return 'center'
-    
-    const centerX = x + width / 2
-    const canvasCenter = canvas.width / 2
-    
-    if (centerX < canvasCenter * 0.4) return 'on your left'
-    if (centerX > canvasCenter * 1.6) return 'on your right'
-    return 'ahead'
-  }
-
-  const detectFrame = async () => {
-    if (!model || !isDetecting) return
-
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    try {
-      // Calculate FPS
-      const now = performance.now()
-      const elapsed = now - lastFrameTimeRef.current
-      if (elapsed > 0) {
-        setFps(Math.round(1000 / elapsed))
-      }
-      lastFrameTimeRef.current = now
-
-      // Run object detection on canvas (already has image from img.onload)
-      const predictions = await model.detect(canvas)
-      setDetections(predictions)
-
-      // Draw bounding boxes and labels
-      predictions.forEach((prediction: Detection) => {
-        const [x, y, width, height] = prediction.bbox
-        
-        // Draw bounding box
-        ctx.strokeStyle = '#7c3aed'
-        ctx.lineWidth = 3
-        ctx.strokeRect(x, y, width, height)
-        
-        // Draw label background
-        ctx.fillStyle = '#7c3aed'
-        const label = `${prediction.class} ${Math.round(prediction.score * 100)}%`
-        ctx.font = '16px Inter, sans-serif'
-        const textWidth = ctx.measureText(label).width
-        ctx.fillRect(x, y - 25, textWidth + 10, 25)
-        
-        // Draw label text
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(label, x + 5, y - 7)
+      // Send to AI model for processing
+      console.log('🤖 Processing with AI model...')
+      const formData = new FormData()
+      formData.append('file', imageBlob, 'snapshot.jpg')
+      
+      const aiResponse = await fetch(`${API_BASE_URL}/api/ai/detect`, {
+        method: 'POST',
+        body: formData,
       })
-
-      // Speak important detections (high confidence objects close to user)
-      const importantDetections = predictions.filter(
-        (p: Detection) => p.score > 0.6 && p.bbox[2] * p.bbox[3] > 10000
-      )
-
-      if (importantDetections.length > 0) {
-        const detection = importantDetections[0]
-        const distance = getDistanceEstimate(detection.bbox)
-        const position = getPosition(detection.bbox)
-        const alert = `${detection.class} ${position}, ${distance}`
-        speakAlert(alert)
+      
+      if (!aiResponse.ok) {
+        throw new Error('AI processing failed')
       }
-
-      // Continue detection loop
-      animationFrameRef.current = requestAnimationFrame(detectFrame)
-    } catch (error) {
-      console.error('Detection error:', error)
-      animationFrameRef.current = requestAnimationFrame(detectFrame)
+      
+      const result = await aiResponse.json()
+      console.log('✅ AI processing complete:', result)
+      
+      // Update UI with results
+      setDetections(result.detections || [])
+      setDescription(result.description || 'No objects detected')
+      
+      // Set audio URL
+      if (result.audio_url) {
+        setAudioUrl(`${API_BASE_URL}${result.audio_url}?t=${Date.now()}`)
+      }
+      
+      // Display detected image with bounding boxes
+      if (result.image_url) {
+        setSnapshot(`${API_BASE_URL}${result.image_url}?t=${Date.now()}`)
+      }
+      
+    } catch (err) {
+      console.error('Error during capture and processing:', err)
+      setError(err instanceof Error ? err.message : 'Processing failed')
+    } finally {
+      setIsProcessing(false)
     }
   }
 
-  const toggleDetection = () => {
-    if (!isDetecting) {
-      setIsDetecting(true)
-      detectFrame()
+  const playAudio = () => {
+    if (audioRef.current && audioUrl) {
+      audioRef.current.play().catch(err => {
+        console.error('Error playing audio:', err)
+        setError('Failed to play audio')
+      })
     } else {
-      setIsDetecting(false)
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-      }
+      setError('No audio available. Please capture and analyze an image first.')
     }
   }
 
@@ -274,134 +133,130 @@ export function LiveObjectDetection() {
               Live <span className="text-gradient">Object Detection</span>
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Real-time AI-powered object detection with audio guidance
+              AI-powered object detection with audio descriptions
             </p>
           </div>
 
           <Card className="p-6 bg-card border-border">
-            {/* Snapshot Stream Display */}
-            <div className="relative bg-black rounded-lg overflow-hidden mb-6" style={{ aspectRatio: '4/3' }}>
-              <img
-                ref={imgRef}
-                className="absolute inset-0 w-full h-full object-contain"
-                style={{ display: 'none' }}
-                alt="ESP32-CAM Stream"
-              />
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-0 w-full h-full object-contain"
-                style={{ display: isStreaming ? 'block' : 'none' }}
-              />
-              
-              {!isStreaming && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <CameraOff className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">Camera not active</p>
-                  </div>
-                </div>
-              )}
-
-              {/* FPS Counter */}
-              {isDetecting && (
-                <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-sm rounded px-3 py-1">
-                  <p className="text-sm font-mono text-white">{fps} FPS</p>
-                </div>
-              )}
-
-              {/* Detection Status */}
-              {isStreaming && (
-                <div className="absolute top-4 right-4">
-                  <Badge variant={isDetecting ? "default" : "secondary"}>
-                    {isDetecting ? 'Detecting' : 'Paused'}
-                  </Badge>
-                </div>
-              )}
-            </div>
-
             {/* Controls */}
-            <div className="flex flex-wrap gap-3 mb-6">
+            <div className="flex gap-4 flex-wrap justify-center mb-6">
               <Button
-                onClick={isStreaming ? stopStream : startStream}
-                variant={isStreaming ? "destructive" : "default"}
-                className="flex-1 sm:flex-none"
+                onClick={captureAndProcess}
+                size="lg"
+                disabled={isProcessing}
+                className="bg-green-600 hover:bg-green-700"
               >
-                {isStreaming ? (
+                {isProcessing ? (
                   <>
-                    <CameraOff className="w-4 h-4 mr-2" />
-                    Stop Camera
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Processing...
                   </>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 mr-2" />
-                    Start Camera
+                    <Camera className="mr-2 h-5 w-5" />
+                    Capture & Analyze
                   </>
                 )}
               </Button>
 
               <Button
-                onClick={toggleDetection}
-                disabled={!isStreaming || !model}
-                variant="secondary"
-                className="flex-1 sm:flex-none"
+                onClick={playAudio}
+                size="lg"
+                disabled={!audioUrl || isProcessing}
+                className="bg-blue-600 hover:bg-blue-700"
               >
-                {isDetecting ? 'Pause Detection' : 'Start Detection'}
+                <Volume2 className="mr-2 h-5 w-5" />
+                Play Description
               </Button>
 
               <Button
-                onClick={() => setAudioEnabled(!audioEnabled)}
+                onClick={() => setUseTestImage(!useTestImage)}
+                size="lg"
                 variant="outline"
-                size="icon"
               >
-                {audioEnabled ? (
-                  <Volume2 className="w-4 h-4" />
-                ) : (
-                  <VolumeX className="w-4 h-4" />
-                )}
+                {useTestImage ? 'Use ESP32 Camera' : 'Use Test Image'}
               </Button>
             </div>
 
-            {/* Model Status */}
-            <div className="mb-6">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${model ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
-                <p className="text-sm text-muted-foreground">
-                  {model ? 'AI Model Ready (COCO-SSD)' : 'Loading AI model...'}
-                </p>
-              </div>
-            </div>
-
-            {/* Detections List */}
-            {detections.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold mb-3">Detected Objects:</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {detections.map((detection, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-secondary/30 rounded-lg px-3 py-2"
-                    >
-                      <p className="text-sm font-medium truncate">{detection.class}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {Math.round(detection.score * 100)}% confidence
-                      </p>
-                    </div>
-                  ))}
-                </div>
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                <p className="text-sm font-medium">⚠️ {error}</p>
               </div>
             )}
 
-            {/* Instructions */}
-            <div className="mt-6 p-4 bg-secondary/20 rounded-lg">
-              <h4 className="text-sm font-semibold mb-2">Instructions:</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Click "Start Camera" to begin video stream</li>
-                <li>• Click "Start Detection" to enable AI object detection</li>
-                <li>• Audio alerts will announce detected objects with position and distance</li>
-                <li>• Toggle audio with the speaker icon</li>
-              </ul>
+            {/* Image Display */}
+            <div className="relative bg-black rounded-lg overflow-hidden mb-6" style={{ aspectRatio: '4/3' }}>
+              {snapshot ? (
+                <img
+                  ref={imgRef}
+                  src={snapshot}
+                  alt="Detected objects"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-white">
+                  <p className="text-lg">Click "Capture & Analyze" to begin</p>
+                </div>
+              )}
+              
+              {/* Processing Overlay */}
+              {isProcessing && (
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                  <div className="text-center text-white">
+                    <Loader2 className="h-12 w-12 animate-spin mx-auto mb-2" />
+                    <p className="text-lg font-medium">Analyzing image...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Detection Results */}
+            {detections.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-6 w-6 text-violet-600" />
+                  <h3 className="text-xl font-semibold">
+                    Detected Objects ({detections.length})
+                  </h3>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {detections.map((det, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 bg-violet-50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-violet-600 rounded-full"></div>
+                        <span className="font-medium text-gray-900 text-sm">{det.class}</span>
+                      </div>
+                      <span className="text-xs text-gray-600">
+                        {(det.confidence * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Description */}
+                {description && (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-gray-800 font-medium">{description}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Mode Badge */}
+            <div className="mt-6 flex justify-center">
+              <Badge variant={useTestImage ? 'secondary' : 'default'}>
+                {useTestImage ? '🖼️  Test Image Mode' : '📷 ESP32-CAM Mode'}
+              </Badge>
             </div>
           </Card>
+
+          {/* Hidden Audio Element */}
+          <audio ref={audioRef} src={audioUrl || undefined} />
         </div>
       </div>
     </section>

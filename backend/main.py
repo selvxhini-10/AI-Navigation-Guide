@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import routes
-from app.routes import health, detection, navigation, device, stream
+from app.routes import health, detection, navigation, device, stream, ai
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,6 +49,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, tags=["Health"])
 app.include_router(stream.router, prefix="/api/stream", tags=["ESP32-CAM Stream"])
+app.include_router(ai.router, prefix="/api/ai", tags=["AI Detection"])
 app.include_router(detection.router, prefix="/api/detection", tags=["Object Detection"])
 app.include_router(navigation.router, prefix="/api/navigation", tags=["Navigation & GPS"])
 app.include_router(device.router, prefix="/api/device", tags=["Device Management"])

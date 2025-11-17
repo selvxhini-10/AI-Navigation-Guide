@@ -106,6 +106,26 @@ async def get_stream_status():
             "error": str(e)
         }
 
+@router.post("/trigger-capture")
+async def trigger_capture():
+    """Trigger ESP32-CAM to capture an image via software button"""
+    try:
+        import requests
+        
+        trigger_url = ESP32_CAM_STREAM_URL.replace('/stream', '/trigger-capture')
+        logger.info(f"Triggering capture at {trigger_url}")
+        response = requests.post(trigger_url, timeout=5)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logger.error(f"ESP32 returned status {response.status_code}")
+            return Response(status_code=response.status_code, content="Trigger failed")
+    
+    except Exception as e:
+        logger.error(f"Error triggering capture: {e}")
+        return Response(status_code=500, content=str(e))
+
 @router.post("/process-frame")
 async def process_frame_backend(frame_data: dict):
     """
