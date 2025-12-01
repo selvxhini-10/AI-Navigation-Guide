@@ -8,7 +8,7 @@ Smart Navigation Cane is a complete assistance system for visually impaired user
 
 - **🎥 Real-time Object Detection**: ESP32-CAM captures video, AI detects obstacles, pedestrians, vehicles
 - **🗺️ Live Navigation**: Google Maps integration with turn-by-turn audio guidance
-- **📱 Mobile App**: Unreal Engine 5.4 iOS/Android app for user interaction
+- **📱 Web Application**: React.js and Tailwind CSS web app for user interaction
 - **⚙️ Embedded System**: Arduino + ESP32-CAM microcontroller integration
 
 ## 🏗️ System Architecture
@@ -34,7 +34,7 @@ FastAPI Backend Server (Python)
 
                     ↓ REST API ↓
 
-Mobile App (Unreal Engine 5.4)
+Mobile App (React.js)
 ├── Real-time Alerts (detection)
 ├── Voice Guidance (navigation)
 ├── Visual Display
@@ -44,7 +44,7 @@ Mobile App (Unreal Engine 5.4)
 ## 📦 Project Structure
 
 ```
-Unreal-Mobile-AR/
+AI-Navigation-Guide /
 ├── backend/                      # FastAPI Python Backend
 │   ├── main.py                  # Application entry point
 │   ├── requirements.txt         # Dependencies
@@ -58,8 +58,8 @@ Unreal-Mobile-AR/
 │           ├── navigation.py    # GPS guidance endpoints
 │           └── device.py        # Device management endpoints
 │
-├── frontend/                     # Unreal Engine Mobile App
-│   ├── UnrealMobileAR.uproject
+├── frontend/                     # Mobile App
+│   ├── Home.tsx
 │   ├── Source/
 │   │   └── SmartNavigationCane/
 │   │       ├── Public/
@@ -95,18 +95,6 @@ python main.py
 Backend runs on: `http://localhost:8000`
 - API Docs: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
-
-### Frontend Setup (Unreal Engine)
-
-```bash
-# Open in Unreal Editor 5.4
-frontend/UnrealMobileAR.uproject
-
-# In editor:
-# 1. Blueprint → Create BP_SNCCharacter
-# 2. Set Backend URL property to http://localhost:8000
-# 3. Press Play to test
-```
 
 ### Hardware Setup (ESP32-CAM + Arduino)
 
@@ -190,7 +178,7 @@ See [SNC_COMPLETE_GUIDE.md](./SNC_COMPLETE_GUIDE.md) for detailed API reference.
 - **ML**: YOLOv8 integration ready
 
 ### Frontend
-- **Engine**: Unreal Engine 5.4
+- **Engine**: React.js Web Application
 - **Language**: C++
 - **Platforms**: iOS 14.0+, Android 8.0+
 - **Networking**: HTTP/REST
@@ -245,10 +233,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ### Frontend Development
 ```bash
-# Unreal Editor
 # Edit C++ in Visual Studio
-# Live Coding: Ctrl + Alt + F11
-# Play in Editor (PIE) for testing
 ```
 
 ### Hardware Development
